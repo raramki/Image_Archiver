@@ -17,6 +17,10 @@ class CategoryMatchesTests(unittest.TestCase):
         self.assertTrue(file_organizer.category_matches("README", "4"))
         self.assertFalse(file_organizer.category_matches("photo.jpg", "4"))
         self.assertFalse(file_organizer.category_matches("notes.txt", "1"))
+        self.assertEqual(
+            file_organizer.CATEGORY_FOLDERS,
+            {"1": "WordExcel", "2": "Images", "3": "AudioVideo", "4": "OtherFiles"},
+        )
 
 
 class DriveSelectionTests(unittest.TestCase):
@@ -72,15 +76,20 @@ class OrganizeFilesTests(unittest.TestCase):
             destination = source / "Rearranged"
             nested = source / "nested"
             nested.mkdir(parents=True)
-            destination.mkdir()
+            word_excel_destination = destination / "WordExcel"
+            images_destination = destination / "Images"
+            word_excel_destination.mkdir(parents=True)
+            images_destination.mkdir()
             document = nested / "report.docx"
             other = source / "notes.txt"
-            existing = destination / "report.docx"
-            destination_file = destination / "already.docx"
+            existing = word_excel_destination / "report.docx"
+            destination_file = images_destination / "already.docx"
+            other_category_file = images_destination / "existing.jpg"
             document.write_bytes(b"document")
             other.write_bytes(b"notes")
             existing.write_bytes(b"older document")
             destination_file.write_bytes(b"already sorted")
+            other_category_file.write_bytes(b"already categorized")
 
             with patch.object(Path, "open", side_effect=AssertionError("read file")):
                 with contextlib.redirect_stdout(io.StringIO()) as output:
@@ -89,8 +98,11 @@ class OrganizeFilesTests(unittest.TestCase):
             self.assertEqual(result, (1, 1, 0))
             self.assertFalse(document.exists())
             self.assertTrue(other.exists())
-            self.assertEqual((destination / "report (2).docx").read_bytes(), b"document")
+            self.assertEqual(
+                (word_excel_destination / "report (2).docx").read_bytes(), b"document"
+            )
             self.assertTrue(destination_file.exists())
+            self.assertTrue(other_category_file.exists())
             self.assertIn("Preserved (category mismatch)", output.getvalue())
             self.assertIn("T", output.getvalue())
 
@@ -118,7 +130,9 @@ class OrganizeFilesTests(unittest.TestCase):
 
             self.assertEqual(result, (1, 0, 1))
             self.assertTrue(first.exists())
-            self.assertTrue((root / "destination" / "second.jpg").exists())
+            self.assertTrue(
+                (root / "destination" / "Images" / "second.jpg").exists()
+            )
 
     def test_rejects_source_as_destination(self):
         with tempfile.TemporaryDirectory() as temporary:

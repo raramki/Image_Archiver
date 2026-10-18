@@ -17,7 +17,8 @@ drive letters, then choose one of the four categories:
    including files without an extension)
 
 The organizer scans the selected drive recursively, excludes its
-`Rearranged` folder from the scan, and moves matching files there. Nonmatching
+`Rearranged` folder from the scan, and moves matching files into a category
+subfolder: `WordExcel`, `Images`, `AudioVideo`, or `OtherFiles`. Nonmatching
 files are left where they are. If a destination filename already exists, a
 numeric suffix is added rather than overwriting it. Each file outcome and scan
 summary is written to the console with a timestamp. A failure to move an

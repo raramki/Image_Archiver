@@ -70,6 +70,13 @@ CATEGORY_NAMES = {
     "4": "All Other Files",
 }
 
+CATEGORY_FOLDERS = {
+    "1": "WordExcel",
+    "2": "Images",
+    "3": "AudioVideo",
+    "4": "OtherFiles",
+}
+
 
 def available_drives() -> list[str]:
     if os.name != "nt":
@@ -144,21 +151,22 @@ def log_action(action: str, path: Path, detail: str = "") -> None:
 
 
 def organize_files(
-    source: Path, destination: Path, category: str
+    source: Path, destination_root: Path, category: str
 ) -> tuple[int, int, int]:
     source = source.resolve(strict=True)
-    destination = Path(os.path.abspath(destination))
+    destination_root = Path(os.path.abspath(destination_root))
     if not source.is_dir():
         raise NotADirectoryError(f"Source is not a directory: {source}")
-    if os.path.normcase(os.path.abspath(destination)) == os.path.normcase(
+    if os.path.normcase(os.path.abspath(destination_root)) == os.path.normcase(
         os.path.abspath(source)
     ):
         raise ValueError("Destination must not be the source folder.")
     if category not in CATEGORY_NAMES:
         raise ValueError(f"Unknown category: {category}")
 
+    destination = destination_root / CATEGORY_FOLDERS[category]
     destination.mkdir(parents=True, exist_ok=True)
-    destination_key = os.path.normcase(os.path.abspath(destination))
+    destination_root_key = os.path.normcase(os.path.abspath(destination_root))
     moved = skipped = failed = 0
 
     def report_scan_error(error: OSError) -> None:
@@ -166,7 +174,11 @@ def organize_files(
         failed += 1
         log_action("Could not scan", Path(error.filename or source), str(error))
 
-    log_action("Started scan", source, f"category: {CATEGORY_NAMES[category]}")
+    log_action(
+        "Started scan",
+        source,
+        f"category: {CATEGORY_NAMES[category]}, destination: {destination}",
+    )
     for current_root, directories, filenames in os.walk(
         source, onerror=report_scan_error
     ):
@@ -177,7 +189,7 @@ def organize_files(
             directory
             for directory in directories
             if os.path.normcase(os.path.abspath(current_path / directory))
-            != destination_key
+            != destination_root_key
         ]
 
         for filename in filenames:
@@ -225,7 +237,7 @@ def main() -> None:
     destination = source / "Rearranged"
     print(f"Choose a file category to move from {source} to {destination}:")
     for number, name in CATEGORY_NAMES.items():
-        print(f"  {number}. {name}")
+        print(f"  {number}. {name} -> {CATEGORY_FOLDERS[number]}")
 
     while True:
         try:
