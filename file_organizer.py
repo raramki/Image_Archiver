@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import ctypes
 import os
 from datetime import datetime
 from pathlib import Path
-
-SOURCE_FOLDER = Path("F:\\")
-DESTINATION_FOLDER = SOURCE_FOLDER / "Rearranged"
+from typing import Callable
 
 CATEGORY_EXTENSIONS = {
     "1": {
@@ -70,6 +69,45 @@ CATEGORY_NAMES = {
     "3": "Audio & Video",
     "4": "All Other Files",
 }
+
+
+def available_drives() -> list[str]:
+    if os.name != "nt":
+        raise OSError("Drive selection is supported only on Windows.")
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    get_logical_drives = kernel32.GetLogicalDrives
+    get_logical_drives.restype = ctypes.c_uint32
+    drive_mask = get_logical_drives()
+    if not drive_mask:
+        raise ctypes.WinError(ctypes.get_last_error())
+    return [
+        chr(ord("A") + index)
+        for index in range(26)
+        if drive_mask & (1 << index)
+    ]
+
+
+def select_drive(input_func: Callable[[str], str] | None = None) -> str:
+    drives = available_drives()
+    if not drives:
+        raise OSError("Windows did not report any available drives.")
+    if input_func is None:
+        input_func = input
+
+    print("Available drives:")
+    for drive in drives:
+        print(f"  {drive}:\\")
+
+    while True:
+        try:
+            selected = input_func("Enter a drive letter (for example, D): ").strip()
+        except EOFError:
+            raise
+        letter = selected.rstrip("\\/:").upper()
+        if len(letter) == 1 and letter in drives:
+            return letter
+        print(f"Please choose one of the listed drives: {', '.join(drives)}.")
 
 
 def category_matches(filename: str, category: str) -> bool:
@@ -174,7 +212,18 @@ def organize_files(
 
 
 def main() -> None:
-    print("Choose a file category to move from F:\\ to F:\\Rearranged:")
+    try:
+        drive = select_drive()
+    except EOFError:
+        print("No drive was selected.")
+        return
+    except OSError as error:
+        log_action("Could not list drives", Path("."), str(error))
+        raise SystemExit(1) from error
+
+    source = Path(f"{drive}:\\")
+    destination = source / "Rearranged"
+    print(f"Choose a file category to move from {source} to {destination}:")
     for number, name in CATEGORY_NAMES.items():
         print(f"  {number}. {name}")
 
@@ -189,9 +238,9 @@ def main() -> None:
         print("Please enter 1, 2, 3, or 4.")
 
     try:
-        organize_files(SOURCE_FOLDER, DESTINATION_FOLDER, category)
+        organize_files(source, destination, category)
     except (OSError, ValueError) as error:
-        error_path = Path(error.filename) if error.filename else SOURCE_FOLDER
+        error_path = Path(error.filename) if error.filename else source
         log_action("Organizer stopped", error_path, str(error))
         raise SystemExit(1) from error
 

@@ -19,6 +19,31 @@ class CategoryMatchesTests(unittest.TestCase):
         self.assertFalse(file_organizer.category_matches("notes.txt", "1"))
 
 
+class DriveSelectionTests(unittest.TestCase):
+    def test_lists_drives_and_accepts_letter_with_colon(self):
+        with patch.object(file_organizer, "available_drives", return_value=["C", "F"]):
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                selected = file_organizer.select_drive(lambda _prompt: "f:")
+
+        self.assertEqual(selected, "F")
+        self.assertIn("C:\\", output.getvalue())
+        self.assertIn("F:\\", output.getvalue())
+
+    def test_reprompts_when_drive_is_not_available(self):
+        answers = iter(["Z", "C"])
+        with patch.object(file_organizer, "available_drives", return_value=["C", "D"]):
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                selected = file_organizer.select_drive(lambda _prompt: next(answers))
+
+        self.assertEqual(selected, "C")
+        self.assertIn("Please choose one of the listed drives", output.getvalue())
+
+    def test_reports_empty_drive_list(self):
+        with patch.object(file_organizer, "available_drives", return_value=[]):
+            with self.assertRaisesRegex(OSError, "any available drives"):
+                file_organizer.select_drive(lambda _prompt: "C")
+
+
 class OrganizeFilesTests(unittest.TestCase):
     def test_does_not_resolve_destination_path_before_using_it(self):
         with tempfile.TemporaryDirectory() as temporary:

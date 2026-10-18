@@ -1,13 +1,14 @@
 # Windows File Utilities
 
 This project contains two independent Windows utilities: **File Organizer**
-sorts files from `F:\` into `F:\Rearranged`, and **Image Archiver** copies
-images into monthly folders in `D:\Image Archive`.
+prompts for a drive and sorts files into that drive's `Rearranged` folder, and
+**Image Archiver** copies images into monthly folders in `D:\Image Archive`.
 
 ## File Organizer
 
 Double-click `Run_File_Organizer.bat`, or build the standalone
-`File_Organizer.exe` and double-click it. Choose one of the four categories:
+`File_Organizer.exe` and double-click it. Select one of the available Windows
+drive letters, then choose one of the four categories:
 
 1. Word & Excel (`.doc`, `.docx`, `.xls`, `.xlsx`, and related formats)
 2. Images (common web and camera image formats)
@@ -15,21 +16,20 @@ Double-click `Run_File_Organizer.bat`, or build the standalone
 4. All Other Files (extensions not included in the first three categories,
    including files without an extension)
 
-The organizer scans `F:\` recursively, excludes `F:\Rearranged` from the scan,
-and moves matching files into `F:\Rearranged`. Nonmatching files are left
-where they are. If a destination filename already exists, a numeric suffix is
-added rather than overwriting it. Each file outcome and scan summary is written
-to the console with a timestamp. A failure to move an individual file is logged
-and does not stop the remaining work.
+The organizer scans the selected drive recursively, excludes its
+`Rearranged` folder from the scan, and moves matching files there. Nonmatching
+files are left where they are. If a destination filename already exists, a
+numeric suffix is added rather than overwriting it. Each file outcome and scan
+summary is written to the console with a timestamp. A failure to move an
+individual file is logged and does not stop the remaining work.
 
 Classification uses only filenames and extensions. The organizer does not open
-or read file contents; matching files are moved with a filesystem rename. The
-source and destination are fixed to the F: drive.
+or read file contents; matching files are moved with a filesystem rename.
 
-If Windows reports a cyclic redundancy check (CRC) or data error on
-`F:\Rearranged`, stop using the drive and back up any accessible data. This is a
+If Windows reports a cyclic redundancy check (CRC) or data error on the
+selected drive, stop using it and back up any accessible data. This is a
 drive/filesystem read error, not a file-category error. Check the drive with
-`chkdsk F:`; use repair options only after backing up important data.
+`chkdsk <drive>:`; use repair options only after backing up important data.
 
 ### Build and install the desktop shortcut
 
