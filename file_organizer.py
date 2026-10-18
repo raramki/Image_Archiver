@@ -109,10 +109,12 @@ def organize_files(
     source: Path, destination: Path, category: str
 ) -> tuple[int, int, int]:
     source = source.resolve(strict=True)
-    destination = destination.resolve()
+    destination = Path(os.path.abspath(destination))
     if not source.is_dir():
         raise NotADirectoryError(f"Source is not a directory: {source}")
-    if destination == source:
+    if os.path.normcase(os.path.abspath(destination)) == os.path.normcase(
+        os.path.abspath(source)
+    ):
         raise ValueError("Destination must not be the source folder.")
     if category not in CATEGORY_NAMES:
         raise ValueError(f"Unknown category: {category}")
@@ -189,7 +191,8 @@ def main() -> None:
     try:
         organize_files(SOURCE_FOLDER, DESTINATION_FOLDER, category)
     except (OSError, ValueError) as error:
-        log_action("Organizer stopped", SOURCE_FOLDER, str(error))
+        error_path = Path(error.filename) if error.filename else SOURCE_FOLDER
+        log_action("Organizer stopped", error_path, str(error))
         raise SystemExit(1) from error
 
     input("Press Enter to close.")

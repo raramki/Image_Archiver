@@ -26,6 +26,11 @@ Classification uses only filenames and extensions. The organizer does not open
 or read file contents; matching files are moved with a filesystem rename. The
 source and destination are fixed to the F: drive.
 
+If Windows reports a cyclic redundancy check (CRC) or data error on
+`F:\Rearranged`, stop using the drive and back up any accessible data. This is a
+drive/filesystem read error, not a file-category error. Check the drive with
+`chkdsk F:`; use repair options only after backing up important data.
+
 ### Build and install the desktop shortcut
 
 Install Python 3.10 or newer and PyInstaller:

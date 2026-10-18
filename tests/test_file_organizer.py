@@ -20,6 +20,26 @@ class CategoryMatchesTests(unittest.TestCase):
 
 
 class OrganizeFilesTests(unittest.TestCase):
+    def test_does_not_resolve_destination_path_before_using_it(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            destination = root / "destination"
+            source.mkdir()
+            original_resolve = Path.resolve
+
+            def resolve_source_only(path, *args, **kwargs):
+                if path == destination:
+                    raise AssertionError("destination should not be resolved")
+                return original_resolve(path, *args, **kwargs)
+
+            with patch.object(Path, "resolve", resolve_source_only):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    result = file_organizer.organize_files(source, destination, "1")
+
+            self.assertEqual(result, (0, 0, 0))
+            self.assertTrue(destination.is_dir())
+
     def test_moves_matching_files_preserves_other_files_and_skips_destination(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
