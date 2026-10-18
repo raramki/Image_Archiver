@@ -25,7 +25,12 @@ summary is written to the console with a timestamp. A failure to move an
 individual file is logged and does not stop the remaining work.
 
 Classification uses only filenames and extensions. The organizer does not open
-or read file contents; matching files are moved with a filesystem rename.
+or read file contents; matching files are moved with a filesystem rename. Duplicate
+detection is also metadata-only: a file is treated as a duplicate when its
+case-insensitive filename, size, and last-modified timestamp match a file
+already in that category folder or found earlier during the scan. The later
+copy is deleted. This timestamp-based match does not verify file contents, so
+different files with identical metadata can be treated as duplicates.
 
 If Windows reports a cyclic redundancy check (CRC) or data error on the
 selected drive, stop using it and back up any accessible data. This is a

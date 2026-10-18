@@ -4,7 +4,7 @@ import ctypes
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
+from typing import Callable, NamedTuple
 
 CATEGORY_EXTENSIONS = {
     "1": {
@@ -78,6 +78,12 @@ CATEGORY_FOLDERS = {
 }
 
 
+class FileFingerprint(NamedTuple):
+    filename: str
+    size: int
+    modified_ns: int
+
+
 def available_drives() -> list[str]:
     if os.name != "nt":
         raise OSError("Drive selection is supported only on Windows.")
@@ -142,6 +148,15 @@ def unique_target(destination: Path, filename: str) -> Path:
         index += 1
 
 
+def file_fingerprint(path: Path) -> FileFingerprint:
+    metadata = path.stat()
+    return FileFingerprint(
+        path.name.casefold(),
+        metadata.st_size,
+        metadata.st_mtime_ns,
+    )
+
+
 def log_action(action: str, path: Path, detail: str = "") -> None:
     timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
     message = f"[{timestamp}] {action}: {path}"
@@ -152,7 +167,7 @@ def log_action(action: str, path: Path, detail: str = "") -> None:
 
 def organize_files(
     source: Path, destination_root: Path, category: str
-) -> tuple[int, int, int]:
+) -> tuple[int, int, int, int]:
     source = source.resolve(strict=True)
     destination_root = Path(os.path.abspath(destination_root))
     if not source.is_dir():
@@ -167,7 +182,24 @@ def organize_files(
     destination = destination_root / CATEGORY_FOLDERS[category]
     destination.mkdir(parents=True, exist_ok=True)
     destination_root_key = os.path.normcase(os.path.abspath(destination_root))
-    moved = skipped = failed = 0
+    moved = skipped = duplicates = failed = 0
+    seen_fingerprints: set[FileFingerprint] = set()
+
+    try:
+        with os.scandir(destination) as entries:
+            for entry in entries:
+                if not entry.is_file(follow_symlinks=False):
+                    continue
+                existing_path = Path(entry.path)
+                try:
+                    seen_fingerprints.add(file_fingerprint(existing_path))
+                except OSError as error:
+                    failed += 1
+                    log_action("Could not inspect metadata", existing_path, str(error))
+    except OSError as error:
+        failed += 1
+        log_action("Could not scan destination", destination, str(error))
+        return moved, skipped, duplicates, failed
 
     def report_scan_error(error: OSError) -> None:
         nonlocal failed
@@ -200,6 +232,17 @@ def organize_files(
                 continue
 
             try:
+                fingerprint = file_fingerprint(file_path)
+                if fingerprint in seen_fingerprints:
+                    file_path.unlink()
+                    duplicates += 1
+                    log_action(
+                        "Deleted duplicate",
+                        file_path,
+                        "same filename, size, and last-modified timestamp",
+                    )
+                    continue
+
                 target = unique_target(destination, filename)
                 while True:
                     try:
@@ -209,6 +252,7 @@ def organize_files(
                         if not target.exists():
                             raise
                         target = unique_target(destination, filename)
+                seen_fingerprints.add(fingerprint)
                 moved += 1
                 log_action("Moved", file_path, f"to {target}")
             except OSError as error:
@@ -218,9 +262,10 @@ def organize_files(
     log_action(
         "Finished",
         source,
-        f"moved {moved}, preserved {skipped}, failed {failed}",
+        f"moved {moved}, deleted duplicates {duplicates}, "
+        f"preserved {skipped}, failed {failed}",
     )
-    return moved, skipped, failed
+    return moved, skipped, duplicates, failed
 
 
 def main() -> None:

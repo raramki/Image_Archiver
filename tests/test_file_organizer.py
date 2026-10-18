@@ -1,5 +1,6 @@
 import contextlib
 import io
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -66,8 +67,88 @@ class OrganizeFilesTests(unittest.TestCase):
                 with contextlib.redirect_stdout(io.StringIO()):
                     result = file_organizer.organize_files(source, destination, "1")
 
-            self.assertEqual(result, (0, 0, 0))
+            self.assertEqual(result, (0, 0, 0, 0))
             self.assertTrue(destination.is_dir())
+
+    def test_deletes_duplicate_with_matching_name_size_and_modified_timestamp(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            nested = source / "nested"
+            nested.mkdir(parents=True)
+            first = source / "photo.jpg"
+            duplicate = nested / "photo.jpg"
+            first.write_bytes(b"same size")
+            duplicate.write_bytes(b"same size")
+            timestamp_ns = 1_700_000_000_123_456_700
+            os.utime(first, ns=(timestamp_ns, timestamp_ns))
+            os.utime(duplicate, ns=(timestamp_ns, timestamp_ns))
+
+            with patch.object(Path, "open", side_effect=AssertionError("read file")):
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    result = file_organizer.organize_files(
+                        source, source / "Rearranged", "2"
+                    )
+
+            self.assertEqual(result, (1, 0, 1, 0))
+            self.assertFalse(first.exists())
+            self.assertFalse(duplicate.exists())
+            self.assertTrue(
+                (source / "Rearranged" / "Images" / "photo.jpg").exists()
+            )
+            self.assertIn("Deleted duplicate", output.getvalue())
+
+    def test_deletes_source_copy_matching_file_already_in_category_folder(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            source.mkdir()
+            original = source / "report.docx"
+            original.write_bytes(b"same metadata")
+            destination_file = (
+                source / "Rearranged" / "WordExcel" / "report.docx"
+            )
+            destination_file.parent.mkdir(parents=True)
+            destination_file.write_bytes(b"same metadata")
+            timestamp_ns = 1_700_000_000_123_456_700
+            os.utime(original, ns=(timestamp_ns, timestamp_ns))
+            os.utime(destination_file, ns=(timestamp_ns, timestamp_ns))
+
+            with patch.object(Path, "open", side_effect=AssertionError("read file")):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    result = file_organizer.organize_files(
+                        source, source / "Rearranged", "1"
+                    )
+
+            self.assertEqual(result, (0, 0, 1, 0))
+            self.assertFalse(original.exists())
+            self.assertTrue(destination_file.exists())
+
+    def test_keeps_same_name_file_with_different_timestamp(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            source.mkdir()
+            first = source / "photo.jpg"
+            second = source / "nested" / "photo.jpg"
+            second.parent.mkdir()
+            first.write_bytes(b"first")
+            second.write_bytes(b"other")
+            os.utime(first, ns=(1_700_000_000_000_000_000,) * 2)
+            os.utime(second, ns=(1_700_000_001_000_000_000,) * 2)
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = file_organizer.organize_files(
+                    source, source / "Rearranged", "2"
+                )
+
+            self.assertEqual(result, (2, 0, 0, 0))
+            self.assertTrue(
+                (source / "Rearranged" / "Images" / "photo.jpg").exists()
+            )
+            self.assertTrue(
+                (source / "Rearranged" / "Images" / "photo (2).jpg").exists()
+            )
 
     def test_moves_matching_files_preserves_other_files_and_skips_destination(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -95,7 +176,7 @@ class OrganizeFilesTests(unittest.TestCase):
                 with contextlib.redirect_stdout(io.StringIO()) as output:
                     result = file_organizer.organize_files(source, destination, "1")
 
-            self.assertEqual(result, (1, 1, 0))
+            self.assertEqual(result, (1, 1, 0, 0))
             self.assertFalse(document.exists())
             self.assertTrue(other.exists())
             self.assertEqual(
@@ -128,7 +209,7 @@ class OrganizeFilesTests(unittest.TestCase):
                         source, root / "destination", "2"
                     )
 
-            self.assertEqual(result, (1, 0, 1))
+            self.assertEqual(result, (1, 0, 0, 1))
             self.assertTrue(first.exists())
             self.assertTrue(
                 (root / "destination" / "Images" / "second.jpg").exists()
