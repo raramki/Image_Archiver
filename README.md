@@ -1,17 +1,73 @@
-# Image Archiver
+# Windows File Utilities
 
-A standard-library Python tool that recursively finds image files by filesystem
+This project contains two independent Windows utilities: **File Organizer**
+prompts for a drive and sorts files into that drive's `Rearranged` folder, and
+**Image Archiver** copies images into monthly folders in `D:\Image Archive`.
+
+## File Organizer
+
+Double-click `Run_File_Organizer.bat`, or build the standalone
+`File_Organizer.exe` and double-click it. Select one of the available Windows
+drive letters, then choose a category to organize only that type or choose
+**All Categories** to sort the entire drive in one run:
+
+1. Word & Excel (`.doc`, `.docx`, `.xls`, `.xlsx`, and related formats)
+2. Images (common web and camera image formats)
+3. Audio & Video (common audio and video formats)
+4. All Other Files (extensions not included in the first three categories,
+   including files without an extension)
+5. All Categories
+
+The organizer scans the selected drive recursively, excludes its
+`Rearranged` folder from the scan, and moves matching files into a category
+subfolder: `WordExcel`, `Images`, `AudioVideo`, or `OtherFiles`. Nonmatching
+files are left where they are. If a destination filename already exists, a
+numeric suffix is added rather than overwriting it. Each file outcome and scan
+summary is written to the console with a timestamp. A failure to move an
+individual file is logged and does not stop the remaining work.
+
+Classification uses only filenames and extensions. The organizer does not open
+or read file contents; matching files are moved with a filesystem rename.
+Duplicate detection is also metadata-only: a file is treated as a duplicate
+when its case-insensitive filename, size, and last-modified timestamp match a file
+already in that category folder or found earlier during the scan. The later
+copy is deleted. This timestamp-based match does not verify file contents, so
+different files with identical metadata can be treated as duplicates.
+
+If Windows reports a cyclic redundancy check (CRC) or data error on the
+selected drive, stop using it and back up any accessible data. This is a
+drive/filesystem read error, not a file-category error. Check the drive with
+`chkdsk <drive>:`; use repair options only after backing up important data.
+
+### Build and install the desktop shortcut
+
+Install Python 3.10 or newer and PyInstaller:
+
+```bat
+python -m pip install pyinstaller
+```
+
+Run `Build_File_Organizer.bat` to create the standalone
+`File_Organizer.exe` and `File_Organizer_Windows.zip`. Extract the ZIP to a
+permanent folder, then run `Create_Desktop_Shortcut.bat` from that folder. The
+shortcut points to the executable in the extracted folder, so keep that folder
+in place.
+
+The organizer can also run from source with Python:
+
+```bat
+python file_organizer.py
+```
+
+## Image Archiver
+
+The existing image archiver recursively finds image files by filesystem
 creation year, skips duplicate file contents, and copies them into monthly
 folders such as `D:\Image Archive\2021-04`.
 
-## Run
-
-On Windows, double-click `Run_Image_Archiver.bat`. It runs the included
-`Image_Archiver.exe` when available, or runs the Python source if Python 3.10+
-is installed. The default source is `F:\` and the default destination is
-`D:\Image Archive`.
-
-To choose different folders, run:
+On Windows, double-click `Run_Image_Archiver.bat`. The default source is
+`F:\` and the default destination is `D:\Image Archive`. To choose different
+folders, run:
 
 ```bat
 Run_Image_Archiver.bat --source "E:\Pictures" --destination "D:\Image Archive"
@@ -26,26 +82,14 @@ skipped. When different images have the same name in a month folder, a numeric
 suffix is added.
 
 Supported extensions: BMP, GIF, HEIC, HEIF, JPEG, JPG, PNG, TIF, TIFF, and
-WEBP. The program reports copied files, duplicates, and failures. It does not
-create a folder-summary CSV.
-
-The destination cannot be the source folder or a folder inside the source.
+WEBP. The destination cannot be the source folder or a folder inside the source.
 Creation-time metadata differs by operating system; Windows provides file
 creation time as the timestamp used by this tool.
 
-## Build the standalone executable and ZIP
+`Build_Image_Archiver.bat` builds the existing image archiver executable and
+`Image_Archiver_Windows.zip`.
 
-Install Python 3.10 or newer and PyInstaller:
-
-```bat
-python -m pip install pyinstaller
-```
-
-Then double-click `Build_Image_Archiver.bat` or run it from Command Prompt. It
-builds a one-file console executable and creates `Image_Archiver_Windows.zip`
-containing the executable, source, launcher, build script, and this README.
-
-## Test
+## Tests
 
 Run the standard-library test suite with:
 
