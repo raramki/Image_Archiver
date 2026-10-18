@@ -68,6 +68,7 @@ CATEGORY_NAMES = {
     "2": "Images",
     "3": "Audio & Video",
     "4": "All Other Files",
+    "5": "All Categories",
 }
 
 CATEGORY_FOLDERS = {
@@ -134,6 +135,13 @@ def category_matches(filename: str, category: str) -> bool:
     return extension in CATEGORY_EXTENSIONS[category]
 
 
+def category_for_filename(filename: str) -> str:
+    for category, extensions in CATEGORY_EXTENSIONS.items():
+        if Path(filename).suffix.lower() in extensions:
+            return category
+    return "4"
+
+
 def unique_target(destination: Path, filename: str) -> Path:
     candidate = destination / filename
     if not candidate.exists():
@@ -179,27 +187,38 @@ def organize_files(
     if category not in CATEGORY_NAMES:
         raise ValueError(f"Unknown category: {category}")
 
-    destination = destination_root / CATEGORY_FOLDERS[category]
-    destination.mkdir(parents=True, exist_ok=True)
+    categories = list(CATEGORY_EXTENSIONS) + ["4"] if category == "5" else [category]
+    destinations = {
+        current_category: destination_root / CATEGORY_FOLDERS[current_category]
+        for current_category in categories
+    }
     destination_root_key = os.path.normcase(os.path.abspath(destination_root))
     moved = skipped = duplicates = failed = 0
-    seen_fingerprints: set[FileFingerprint] = set()
+    seen_fingerprints: dict[str, set[FileFingerprint]] = {
+        current_category: set() for current_category in categories
+    }
 
-    try:
-        with os.scandir(destination) as entries:
-            for entry in entries:
-                if not entry.is_file(follow_symlinks=False):
-                    continue
-                existing_path = Path(entry.path)
-                try:
-                    seen_fingerprints.add(file_fingerprint(existing_path))
-                except OSError as error:
-                    failed += 1
-                    log_action("Could not inspect metadata", existing_path, str(error))
-    except OSError as error:
-        failed += 1
-        log_action("Could not scan destination", destination, str(error))
-        return moved, skipped, duplicates, failed
+    for current_category, destination in destinations.items():
+        try:
+            destination.mkdir(parents=True, exist_ok=True)
+            with os.scandir(destination) as entries:
+                for entry in entries:
+                    if not entry.is_file(follow_symlinks=False):
+                        continue
+                    existing_path = Path(entry.path)
+                    try:
+                        seen_fingerprints[current_category].add(
+                            file_fingerprint(existing_path)
+                        )
+                    except OSError as error:
+                        failed += 1
+                        log_action(
+                            "Could not inspect metadata", existing_path, str(error)
+                        )
+        except OSError as error:
+            failed += 1
+            log_action("Could not scan destination", destination, str(error))
+            return moved, skipped, duplicates, failed
 
     def report_scan_error(error: OSError) -> None:
         nonlocal failed
@@ -209,7 +228,7 @@ def organize_files(
     log_action(
         "Started scan",
         source,
-        f"category: {CATEGORY_NAMES[category]}, destination: {destination}",
+        f"category: {CATEGORY_NAMES[category]}, destination root: {destination_root}",
     )
     for current_root, directories, filenames in os.walk(
         source, onerror=report_scan_error
@@ -226,14 +245,19 @@ def organize_files(
 
         for filename in filenames:
             file_path = current_path / filename
-            if not category_matches(filename, category):
+            if category == "5":
+                file_category = category_for_filename(filename)
+            elif category_matches(filename, category):
+                file_category = category
+            else:
                 skipped += 1
                 log_action("Preserved (category mismatch)", file_path)
                 continue
 
             try:
+                destination = destinations[file_category]
                 fingerprint = file_fingerprint(file_path)
-                if fingerprint in seen_fingerprints:
+                if fingerprint in seen_fingerprints[file_category]:
                     file_path.unlink()
                     duplicates += 1
                     log_action(
@@ -252,7 +276,7 @@ def organize_files(
                         if not target.exists():
                             raise
                         target = unique_target(destination, filename)
-                seen_fingerprints.add(fingerprint)
+                seen_fingerprints[file_category].add(fingerprint)
                 moved += 1
                 log_action("Moved", file_path, f"to {target}")
             except OSError as error:
@@ -282,17 +306,20 @@ def main() -> None:
     destination = source / "Rearranged"
     print(f"Choose a file category to move from {source} to {destination}:")
     for number, name in CATEGORY_NAMES.items():
-        print(f"  {number}. {name} -> {CATEGORY_FOLDERS[number]}")
+        if number == "5":
+            print(f"  {number}. {name} -> all category folders")
+        else:
+            print(f"  {number}. {name} -> {CATEGORY_FOLDERS[number]}")
 
     while True:
         try:
-            category = input("Enter 1, 2, 3, or 4: ").strip()
+            category = input("Enter 1, 2, 3, 4, or 5: ").strip()
         except EOFError:
             print("No category was selected.")
             return
         if category in CATEGORY_NAMES:
             break
-        print("Please enter 1, 2, 3, or 4.")
+        print("Please enter 1, 2, 3, 4, or 5.")
 
     try:
         organize_files(source, destination, category)

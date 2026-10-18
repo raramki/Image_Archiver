@@ -1,9 +1,9 @@
 import contextlib
 import io
-import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import file_organizer
@@ -22,6 +22,15 @@ class CategoryMatchesTests(unittest.TestCase):
             file_organizer.CATEGORY_FOLDERS,
             {"1": "WordExcel", "2": "Images", "3": "AudioVideo", "4": "OtherFiles"},
         )
+        self.assertEqual(file_organizer.category_for_filename("IMAGE.PNG"), "2")
+        self.assertEqual(file_organizer.category_for_filename("misc.bin"), "4")
+
+    def test_fingerprint_uses_original_last_modified_timestamp(self):
+        metadata = SimpleNamespace(st_size=123, st_mtime_ns=456, st_ctime_ns=789)
+        with patch.object(Path, "stat", return_value=metadata):
+            fingerprint = file_organizer.file_fingerprint(Path("Photo.JPG"))
+
+        self.assertEqual(fingerprint, file_organizer.FileFingerprint("photo.jpg", 123, 456))
 
 
 class DriveSelectionTests(unittest.TestCase):
@@ -80,11 +89,15 @@ class OrganizeFilesTests(unittest.TestCase):
             duplicate = nested / "photo.jpg"
             first.write_bytes(b"same size")
             duplicate.write_bytes(b"same size")
-            timestamp_ns = 1_700_000_000_123_456_700
-            os.utime(first, ns=(timestamp_ns, timestamp_ns))
-            os.utime(duplicate, ns=(timestamp_ns, timestamp_ns))
 
-            with patch.object(Path, "open", side_effect=AssertionError("read file")):
+            with (
+                patch.object(
+                    file_organizer,
+                    "file_fingerprint",
+                    return_value=file_organizer.FileFingerprint("photo.jpg", 9, 10),
+                ),
+                patch.object(Path, "open", side_effect=AssertionError("read file")),
+            ):
                 with contextlib.redirect_stdout(io.StringIO()) as output:
                     result = file_organizer.organize_files(
                         source, source / "Rearranged", "2"
@@ -110,11 +123,17 @@ class OrganizeFilesTests(unittest.TestCase):
             )
             destination_file.parent.mkdir(parents=True)
             destination_file.write_bytes(b"same metadata")
-            timestamp_ns = 1_700_000_000_123_456_700
-            os.utime(original, ns=(timestamp_ns, timestamp_ns))
-            os.utime(destination_file, ns=(timestamp_ns, timestamp_ns))
 
-            with patch.object(Path, "open", side_effect=AssertionError("read file")):
+            with (
+                patch.object(
+                    file_organizer,
+                    "file_fingerprint",
+                    return_value=file_organizer.FileFingerprint(
+                        "report.docx", 13, 10
+                    ),
+                ),
+                patch.object(Path, "open", side_effect=AssertionError("read file")),
+            ):
                 with contextlib.redirect_stdout(io.StringIO()):
                     result = file_organizer.organize_files(
                         source, source / "Rearranged", "1"
@@ -134,13 +153,20 @@ class OrganizeFilesTests(unittest.TestCase):
             second.parent.mkdir()
             first.write_bytes(b"first")
             second.write_bytes(b"other")
-            os.utime(first, ns=(1_700_000_000_000_000_000,) * 2)
-            os.utime(second, ns=(1_700_000_001_000_000_000,) * 2)
+            fingerprints = {
+                first: file_organizer.FileFingerprint("photo.jpg", 5, 10),
+                second: file_organizer.FileFingerprint("photo.jpg", 5, 11),
+            }
 
-            with contextlib.redirect_stdout(io.StringIO()):
-                result = file_organizer.organize_files(
-                    source, source / "Rearranged", "2"
-                )
+            with patch.object(
+                file_organizer,
+                "file_fingerprint",
+                side_effect=lambda path: fingerprints[path],
+            ):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    result = file_organizer.organize_files(
+                        source, source / "Rearranged", "2"
+                    )
 
             self.assertEqual(result, (2, 0, 0, 0))
             self.assertTrue(
@@ -149,6 +175,32 @@ class OrganizeFilesTests(unittest.TestCase):
             self.assertTrue(
                 (source / "Rearranged" / "Images" / "photo (2).jpg").exists()
             )
+
+    def test_all_categories_moves_files_to_their_category_folders(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "source"
+            nested = source / "nested"
+            nested.mkdir(parents=True)
+            files = {
+                nested / "report.docx": "WordExcel",
+                nested / "photo.jpg": "Images",
+                nested / "sound.mp3": "AudioVideo",
+                nested / "notes.txt": "OtherFiles",
+            }
+            for path in files:
+                path.touch()
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = file_organizer.organize_files(
+                    source, source / "Rearranged", "5"
+                )
+
+            self.assertEqual(result, (4, 0, 0, 0))
+            for original, category_folder in files.items():
+                self.assertFalse(original.exists())
+                self.assertTrue(
+                    (source / "Rearranged" / category_folder / original.name).exists()
+                )
 
     def test_moves_matching_files_preserves_other_files_and_skips_destination(self):
         with tempfile.TemporaryDirectory() as temporary:
